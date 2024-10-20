@@ -57,40 +57,48 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
 def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
     try:
         # Add to Windows startup via registry
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-            0,
-            winreg.KEY_SET_VALUE
-        )
-        winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
-        winreg.CloseKey(key)
-        print(f"Successfully added {executable_path} to registry startup.")
+        try:
+            # Open or create the registry key for the current user's startup programs
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Run",
+                0,
+                winreg.KEY_SET_VALUE
+            )
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
+            winreg.CloseKey(key)
+            print(f"Successfully added {executable_path} to registry startup.")
 
-        # Verify the registry key value
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
-        value, _ = winreg.QueryValueEx(key, app_name)
-        winreg.CloseKey(key)
-        print(f"Registry Key Value for {app_name}: {value}")
+            # Verify the registry key value
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
+            value, _ = winreg.QueryValueEx(key, app_name)
+            winreg.CloseKey(key)
+            print(f"Registry Key Value for {app_name}: {value}")
+        except Exception as e:
+            print(f"Failed to add {executable_path} to registry startup: {e}")
+            print(traceback.format_exc())
 
         # Task Scheduler using the registry entry for the path to 'borg.exe'
-        cmd = [
-            'schtasks', '/Create', '/F',
-            '/SC', 'ONLOGON',  # Trigger on logon
-            '/TN', app_name,  # Task name
-            '/TR', f'"{value}"',  # Use the value from the registry
-            '/RU', os.getlogin(),  # Run under the current user
-            '/RL', 'HIGHEST'  # Run with highest privileges
-        ]
+        # The command will use the value from the registry for the task's executable path
+        if value:
+            cmd = [
+                'schtasks', '/Create', '/F',
+                '/SC', 'ONSTART',  # Trigger on system startup
+                '/TN', app_name,  # Task name
+                '/TR', f'"{value}"',  # Use the value from the registry
+                '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges
+                '/RL', 'HIGHEST'  # Run with highest privileges
+            ]
 
-        print(f"Running Task Scheduler command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+            print(f"Running Task Scheduler command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True)
 
-        if result.returncode == 0:
-            print(f"Successfully added {executable_path} to Task Scheduler using the registry path.")
+            if result.returncode == 0:
+                print(f"Successfully added {executable_path} to Task Scheduler using the registry path.")
+            else:
+                print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
         else:
-            print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
-
+            print(f"Failed to retrieve the registry path for {app_name}.")
     except Exception as e:
         print(f"Failed to add {executable_path} to startup and Task Scheduler: {e}")
         print(traceback.format_exc())
