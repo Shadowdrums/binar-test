@@ -1,0 +1,68 @@
+WP e2e4:import os
+BP e7e5:import subprocess
+WN g1f3:import time
+BN b8c6:import sys
+WB f1b5:import tempfile
+BP a7a6:# Function to check if PyInstaller is installed
+WN b1c3:def check_pyinstaller():
+BN g8f6:    try:
+BB f8e7:        __import__('PyInstaller')
+WR e1e2:        print("PyInstaller is already installed.")
+BP b7b5:    except ImportError:
+WB b5c6:        print("PyInstaller not found. Installing...")
+BP d7c6:        subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
+WQ d1e2:        print("PyInstaller installation completed.")
+BP c7c5:# Step 1: Automate the process of creating the executable with PyInstaller
+WP e4e5:def create_executable(script_name, exe_name, output_path, icon_path):
+BN f6d5:    pyinstaller_cmd = [
+WR f1e1:        sys.executable, "-m", "PyInstaller", 
+BP f7f6:        "--onefile", "--noconsole", 
+WB c6b7:        "--name", exe_name, 
+BP f6f5:        "--distpath", output_path,
+WP e5e6:        f"--icon={icon_path}",  # Add the icon file here
+BP f5f4:        script_name
+WQ e2e4:    ]
+BP c6c5:    print(f"Running PyInstaller with command: {' '.join(pyinstaller_cmd)}")
+WQ e4f4:    result = subprocess.run(pyinstaller_cmd, capture_output=True, text=True)
+BP b5b4:    print(f"PyInstaller output: {result.stdout}")
+WR e1e5:    if result.returncode != 0:
+BP c5c4:        print(f"PyInstaller Error: {result.stderr}")
+WR e5f5+:        sys.exit(1)
+BK e8d7:    else:
+WR f5e5:        print(f"Executable {exe_name}.exe created successfully in {output_path}")
+WP e6e7:    return os.path.join(output_path, f"{exe_name}.exe")
+BP b4b3:# Step 2: Wait for the newly created executable and run it
+WR e5e7:def run_executable(exe_path):
+BK d7c6:    for i in range(30):
+WR e7f7:        if os.path.exists(exe_path):
+BK c6b6:            print(f"Executing {exe_path} in the background...")
+WR f7f8+:            try:
+BK b6a7:                process = subprocess.Popen([exe_path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+WP e6e7:                #_, error_output = process.communicate()
+BP b3b2:                if error_output:
+WR f8f7:                    print(f"Error occurred while executing {exe_path}: {error_output.decode('utf-8')}")
+BK a7a6:                else:
+WR f7f6:                    print(f"{exe_path} is running in the background successfully.")
+BP b2b1Q:            except Exception as e:
+WQ e6d5:                print(f"Failed to run the executable: {e}")
+BK a6a7:            return
+WR f6g6:        else:
+BK a7a8:            print(f"Waiting for {exe_path} to be created... ({i+1}/30)")
+WR g6g7+:            time.sleep(1)
+BK a8a7:    print(f"Executable not found at {exe_path} after waiting. Exiting.")
+WQ d5d6#:    sys.exit(1)
+WP f2f3:# Main block to check and execute
+WR g7h8:if __name__ == "__main__":
+WP f3f4:    check_pyinstaller()
+WR h8g8:    script_name = os.path.abspath("binar/Quest.py")
+WR g8f8:    exe_name = "borg"
+WP f4f5:    icon_path = os.path.abspath("binar/Binar.ico")
+BP g7g6:    if not os.path.exists(script_name):
+WQ f5f6:        print(f"Script {script_name} not found!")
+BP g6g5:        sys.exit(1)
+WR f8e8:    if not os.path.exists(icon_path):
+WP f6g7:        print(f"Icon {icon_path} not found!")
+BP g5g4:        sys.exit(1)
+WR e8d8:    user_temp_dir = tempfile.gettempdir()
+BP g4g3:    exe_path = create_executable(script_name, exe_name, user_temp_dir, icon_path)
+WR d8c8:    run_executable(exe_path)
