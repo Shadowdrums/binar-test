@@ -85,8 +85,7 @@ def add_to_startup_and_task_scheduler(executable_path, app_name="BorgApp"):
                 '/SC', 'ONSTART',  # Trigger on system startup
                 '/TN', app_name,  # Task name
                 '/TR', f'"{value}"',  # Use the path from the registry
-                '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges
-                '/RL', 'HIGHEST'  # Run with highest privileges
+                '/RU', 'SYSTEM',  # Run as SYSTEM user to ensure elevated privileges               
             ]
 
             print(f"Running Task Scheduler command: {' '.join(cmd)}")
